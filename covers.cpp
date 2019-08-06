@@ -1,4 +1,4 @@
-/*The following code is an adaptation from the original Rainmeeter project one. It is shared under the same license.*/
+/*The following code is an adaptation of the original Rainmeeter project one. It is shared under the same license.*/
 
 /* Copyright (C) 2011 Rainmeter Project Developers
  *
