@@ -330,14 +330,50 @@ int main()
 			}
 		}*/
 
-		if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y) && sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+		/*if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y) && sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+			holding = TRUE;
 			resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
 			k = BASS_ChannelGetLength(s, BASS_POS_BYTE) * resizeBar / 250;
 			BASS_ChannelSetPosition(s, k, BASS_POS_BYTE);
 			progressBar.setSize(sf::Vector2f(resizeBar, 20));
 			currentPosition = BASS_ChannelGetPosition(s, BASS_POS_BYTE);
 			updateTime(currentPosition, getChannelLengthInSeconds(s), songTime);
+			//BASS_ChannelPause(s);
+			std::cout << holding;
 			timer.restart();
+		}*/
+
+		if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
+			std::cout << holding;
+			if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
+				holding = TRUE;
+			}
+
+			if (holding == TRUE) {
+				resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
+				k = BASS_ChannelGetLength(s, BASS_POS_BYTE) * resizeBar / 250;
+				BASS_ChannelSetPosition(s, k, BASS_POS_BYTE);
+				progressBar.setSize(sf::Vector2f(resizeBar, 20));
+				currentPosition = BASS_ChannelGetPosition(s, BASS_POS_BYTE);
+				updateTime(currentPosition, getChannelLengthInSeconds(s), songTime);
+				BASS_ChannelPause(s);
+				timer.restart();
+			}
+
+			/*resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
+			k = BASS_ChannelGetLength(s, BASS_POS_BYTE) * resizeBar / 250;
+			BASS_ChannelSetPosition(s, k, BASS_POS_BYTE);
+			progressBar.setSize(sf::Vector2f(resizeBar, 20));
+			currentPosition = BASS_ChannelGetPosition(s, BASS_POS_BYTE);
+			updateTime(currentPosition, getChannelLengthInSeconds(s), songTime);
+			BASS_ChannelPause(s);
+			timer.restart();*/
+		}
+		else {
+			holding = FALSE;
+			if (!holding && isPlaying) {
+				BASS_ChannelPlay(s, FALSE);
+			}
 		}
 
 		if (volumeBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
