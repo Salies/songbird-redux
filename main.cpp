@@ -205,6 +205,14 @@ void jumpTrack() {
 		setActiveChannel(str2, info2.filename);
 		b = b + 1;
 		str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+	}
+	else if (activeChannel == str2) {
+		BASS_ChannelGetInfo(str1, &info2);
+		setActiveChannel(str1, info2.filename);
+		b = b + 1;
+		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
 	}
 	/*else if (activeChannel == 2) {
 		activeChannel = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
