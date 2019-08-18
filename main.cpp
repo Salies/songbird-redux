@@ -178,6 +178,7 @@ const char* songs[] = {
 	"12. Act II_ Scene Nine_ Finally Free.flac"
 };
 
+int sizeOfSongs = sizeof(songs) / sizeof(*songs); //obivmante mudar isso quando os queues forem alteráveis
 
 int b = 0;
 
@@ -189,21 +190,18 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str2)) { // stream2 has data
 		BASS_ChannelGetInfo(str2, &info2);
 		if (songs[b + 1] && !BASS_ChannelIsActive(str1)) { //verify needed because a skip could've happened
-			std::cout << "troquei por osmose";
 			b = b + 1;
 			str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 		}
 		else if (!songs[b + 1]) {
 			b = NULL;
 		}
-		std::cout << "bateu";
 		setActiveChannel(str2, info2.filename);
 		r = BASS_ChannelGetData(str2, buf, len);
 	}
 	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str1)) {
 		BASS_ChannelGetInfo(str1, &info2);
 		if (songs[b + 1] && !BASS_ChannelIsActive(str2)) {
-			std::cout << "troquei por osmose";
 			b = b + 1;
 			str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 		}
@@ -252,14 +250,54 @@ void jumpTrack() {
 		BASS_StreamFree(str1);
 		BASS_StreamFree(str2);
 	}
-	/*else if (activeChannel == 2) {
-		activeChannel = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
-		b = b + 1;
-		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
-	}*/
-	/*else { //none active
+}
 
-	}*/
+void backTrack() {
+	if (BASS_ChannelBytes2Seconds(activeChannel, BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE)) > 20) {
+		BASS_ChannelSetPosition(activeChannel,0,BASS_POS_BYTE);
+		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+	}
+	else {
+		/*if (b > 0) { //b + 1 exists
+			if (b == 1) {
+				BASS_ChannelSetPosition(activeChannel, 0, BASS_POS_BYTE);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+			}
+		}
+		else if(!b && (sizeof(songs) / sizeof(*songs)) == 1) { //first song
+
+		}
+		else { //b = NULL and it doesn't have only one song (last song)
+
+		}*/
+
+		if (b == 1 || sizeOfSongs == 1) { //if first song or only one song
+			BASS_StreamFree(str1);
+			BASS_StreamFree(str2);
+		}
+		else {
+			if (activeChannel == str1) {
+				b = b - 2;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str2, &info2);
+				setActiveChannel(str2, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+			}
+			else if (activeChannel == str2) {
+				b = b - 2;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str1, &info2);
+				setActiveChannel(str1, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+			}
+		}
+	}
 }
 
 int main()
@@ -287,6 +325,12 @@ int main()
 	skipButton.setTexture(&buttonsTile);
 	skipButton.setTextureRect(sf::IntRect(266, 0, 121, 112));
 	skipButton.setPosition(200.f, 30.f);
+
+	//back button
+	sf::RectangleShape backButton(sf::Vector2f(50, 50));
+	backButton.setTexture(&buttonsTile);
+	backButton.setTextureRect(sf::IntRect(449, 0, 121, 112));
+	backButton.setPosition(300.f, 30.f);
 
 	//progress bar
 	trackBar.setFillColor(sf::Color(209, 209, 209));
@@ -340,7 +384,8 @@ int main()
 	str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 	BASS_ChannelGetInfo(str1, &info);
 	setActiveChannel(str1, songs[b]);
-	if (songs[b + 1]) {
+	if (sizeOfSongs != 1) {
+		std::cout << "batata";
 		b = b + 1;
 		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 	}
@@ -378,6 +423,10 @@ int main()
 
 					if (skipButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
 						jumpTrack();
+					}
+
+					if (backButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
+						backTrack();
 					}
 
 					if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
@@ -436,6 +485,8 @@ int main()
 		window.draw(songTime);
 
 		window.draw(skipButton);
+
+		window.draw(backButton);
 
 		window.display();
 
@@ -512,3 +563,5 @@ int main()
 /*TRABALHAR COM PROPORCIONALDIADE NO SETACTIVECHANNEL (IF QUEUE > 1?)*/
 
 //STOURT SIMPLESMENTE RECEBE DADOS DOS OUTROS - TENHO QUE ATUALIZAR A FUNÇÃO
+
+//TODO - ATUALIZAR A BARRA NA HORA QUE DÁ SKIP/BACK
