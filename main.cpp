@@ -147,7 +147,7 @@ void setActiveChannel(HSTREAM channel, const char* filename) {
 
 DWORD r;
 
-const char* songs[] = {
+/*const char* songs[] = {
 	"01. Deus Le Volt!.flac",
 	"02. Spread Your Fire.flac",
 	"03. Angels And Demons.flac",
@@ -161,7 +161,23 @@ const char* songs[] = {
 	"11. Morning Star.flac",
 	"12. Late Redemption.flac",
 	"13. Gate XIII.flac"
+};*/
+
+const char* songs[] = {
+	"01. Act I_ Scene One_ Regression.flac",
+	"02. Act I_ Scene Two_ I. Overture 1928.flac",
+	"03. Act I_ Scene Two_ II. Strange Déjà Vu.flac",
+	"04. Act I_ Scene Three_ I. Through My Words.flac",
+	"05. Act I_ Scene Three_ II. Fatal Tragedy.flac",
+	"06. Act I_ Scene Four_ Beyond This Life.flac",
+	"07. Act I_ Scene Five_ Through Her Eyes.flac",
+	"08. Act II_ Scene Six_ Home.flac",
+	"09. Act II_ Scene Seven_ I. The Dance of Eternity.flac",
+	"10. Act II_ Scene Seven_ II. One Last Time.flac",
+	"11. Act II_ Scene Eight_ The Spirit Carries On.flac",
+	"12. Act II_ Scene Nine_ Finally Free.flac"
 };
+
 
 int b = 0;
 
@@ -177,6 +193,9 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 			b = b + 1;
 			str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 		}
+		else if (!songs[b + 1]) {
+			b = NULL;
+		}
 		std::cout << "bateu";
 		setActiveChannel(str2, info2.filename);
 		r = BASS_ChannelGetData(str2, buf, len);
@@ -187,6 +206,9 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 			std::cout << "troquei por osmose";
 			b = b + 1;
 			str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+		}
+		else if (!songs[b + 1]) {
+			b = NULL;
 		}
 		setActiveChannel(str1, info2.filename);
 		r = BASS_ChannelGetData(str1, buf, len);
@@ -200,19 +222,35 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 }
 
 void jumpTrack() {
-	if (activeChannel == str1) {
-		BASS_ChannelGetInfo(str2, &info2);
-		setActiveChannel(str2, info2.filename);
-		b = b + 1;
-		str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
-		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+	if (b) {
+		if (activeChannel == str1) {
+			BASS_ChannelGetInfo(str2, &info2);
+			setActiveChannel(str2, info2.filename);
+			BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //maybe setting this later "bites" the beggining of the song? idk, it sounds smooth. maybe this will have to be a down.
+			if (songs[b + 1]) {
+				b = b + 1;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+			}
+			else {
+				b = NULL;
+			}
+		}
+		else if (activeChannel == str2) {
+			BASS_ChannelGetInfo(str1, &info2);
+			setActiveChannel(str1, info2.filename);
+			BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+			if (songs[b + 1]) {
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+			}
+			else {
+				b = NULL;
+			}
+		}
 	}
-	else if (activeChannel == str2) {
-		BASS_ChannelGetInfo(str1, &info2);
-		setActiveChannel(str1, info2.filename);
-		b = b + 1;
-		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
-		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+	else {
+		BASS_StreamFree(str1);
+		BASS_StreamFree(str2);
 	}
 	/*else if (activeChannel == 2) {
 		activeChannel = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
