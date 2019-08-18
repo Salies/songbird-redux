@@ -34,6 +34,7 @@ HSTREAM activeChannel;
 HSTREAM str1, str2, strout;
 
 BASS_CHANNELINFO info;
+BASS_CHANNELINFO info2;
 
 bool isPlaying = FALSE;
 bool holding = FALSE;
@@ -135,7 +136,7 @@ void setInfo(TagLib::FileRef file) {
 	songTime.setString("0:00/" + toHourFormat(songLenInSeconds));
 }
 
-void setActiveChannel(HSTREAM channel, const char *filename) {
+void setActiveChannel(HSTREAM channel, const char* filename) {
 	activeChannel = channel;
 	BASS_ChannelGetInfo(channel, &info);
 	TagLib::FileRef file(filename);
@@ -144,27 +145,75 @@ void setActiveChannel(HSTREAM channel, const char *filename) {
 	coverArt.setTexture(&testTexture);
 }
 
+DWORD r;
+
+const char* songs[] = {
+	"01. Deus Le Volt!.flac",
+	"02. Spread Your Fire.flac",
+	"03. Angels And Demons.flac",
+	"04. Waiting Silence.flac",
+	"05. Wishing Well.flac",
+	"06. The Temple Of Hate.flac",
+	"07. The Shadow Hunter.flac",
+	"08. No Pain For The Dead.flac",
+	"09. Winds Of Destination.flac",
+	"10. Sprouts Of Time.flac",
+	"11. Morning Star.flac",
+	"12. Late Redemption.flac",
+	"13. Gate XIII.flac"
+};
+
+int b = 0;
+
 DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 {
-	DWORD r;
-	if (BASS_ChannelIsActive(str1)) { // stream1 has data
-		if (activeChannel != str1) {
-			setActiveChannel(str1, "01. Deus Le Volt!.flac");
-		}
-		r = BASS_ChannelGetData(str1, buf, len);
-		//std::cout << "oi";
+	if (BASS_ChannelIsActive(activeChannel)) { // stream1 has data //VOLTAR PRA STR1, EM STR2 DECLARAR 1
+		r = BASS_ChannelGetData(activeChannel, buf, len);
 	}
-	else if (BASS_ChannelIsActive(str2)) { // stream2 has data
-		if (activeChannel != str2) {
-			setActiveChannel(str2, "02. Spread Your Fire.flac");
+	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str2)) { // stream2 has data
+		BASS_ChannelGetInfo(str2, &info2);
+		if (songs[b + 1] && !BASS_ChannelIsActive(str1)) { //verify needed because a skip could've happened
+			std::cout << "troquei por osmose";
+			b = b + 1;
+			str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 		}
+		std::cout << "bateu";
+		setActiveChannel(str2, info2.filename);
 		r = BASS_ChannelGetData(str2, buf, len);
-		//setActiveChannel(str1, "02. Spread Your Fire.flac");
-		if (!BASS_ChannelIsActive(str2))
-			r |= BASS_STREAMPROC_END; // stream2 has ended, so we're done
 	}
-	else r = BASS_STREAMPROC_END;
+	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str1)) {
+		BASS_ChannelGetInfo(str1, &info2);
+		if (songs[b + 1] && !BASS_ChannelIsActive(str2)) {
+			std::cout << "troquei por osmose";
+			b = b + 1;
+			str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+		}
+		setActiveChannel(str1, info2.filename);
+		r = BASS_ChannelGetData(str1, buf, len);
+	}
+	else {
+		r = BASS_STREAMPROC_END;
+		BASS_StreamFree(str1);
+		BASS_StreamFree(str2);
+	}
 	return r;
+}
+
+void jumpTrack() {
+	if (activeChannel == str1) {
+		BASS_ChannelGetInfo(str2, &info2);
+		setActiveChannel(str2, info2.filename);
+		b = b + 1;
+		str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+	}
+	/*else if (activeChannel == 2) {
+		activeChannel = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+		b = b + 1;
+		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+	}*/
+	/*else { //none active
+
+	}*/
 }
 
 int main()
@@ -186,6 +235,12 @@ int main()
 	pauseButton.setTexture(&buttonsTile);
 	pauseButton.setTextureRect(sf::IntRect(130, 0, 75, 112));
 	pauseButton.setPosition(100.f, 30.f);
+
+	//skip button
+	sf::RectangleShape skipButton(sf::Vector2f(50, 50));
+	skipButton.setTexture(&buttonsTile);
+	skipButton.setTextureRect(sf::IntRect(266, 0, 121, 112));
+	skipButton.setPosition(200.f, 30.f);
 
 	//progress bar
 	trackBar.setFillColor(sf::Color(209, 209, 209));
@@ -236,10 +291,13 @@ int main()
 	coverArt.setPosition(10.f, 130.f);
 
 	//TEST STUFF
-	str1 = BASS_StreamCreateFile(FALSE, "01. Deus Le Volt!.flac", 0, 0, BASS_STREAM_DECODE);
-	str2 = BASS_StreamCreateFile(FALSE, "02. Spread Your Fire.flac", 0, 0, BASS_STREAM_DECODE);
+	str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 	BASS_ChannelGetInfo(str1, &info);
-	setActiveChannel(str1, "01. Deus Le Volt!.flac");
+	setActiveChannel(str1, songs[b]);
+	if (songs[b + 1]) {
+		b = b + 1;
+		str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+	}
 	strout = BASS_StreamCreate(info.freq, info.chans, 0, MyStreamProc, 0); // create the output stream
 
 	while (window.isOpen())
@@ -272,7 +330,11 @@ int main()
 						text.setString("Paused");
 					}
 
-					if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y) ) {
+					if (skipButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
+						jumpTrack();
+					}
+
+					if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
 						//resizePlaybackBar();
 
 						//updateTracking(s);
@@ -326,6 +388,8 @@ int main()
 		window.draw(volumeSlider);
 
 		window.draw(songTime);
+
+		window.draw(skipButton);
 
 		window.display();
 
