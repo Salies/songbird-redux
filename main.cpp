@@ -37,7 +37,8 @@ BASS_CHANNELINFO info;
 BASS_CHANNELINFO info2;
 
 bool isPlaying = FALSE;
-bool holding = FALSE;
+bool draggingTrackbar = FALSE;
+bool draggingVolume = FALSE;
 const char* filePath = "01 - Rising.mp3";
 sf::Clock timer;
 
@@ -45,6 +46,8 @@ float resizeBar;
 float resizeVolumeBar;
 float volume = 1;
 QWORD k;
+
+float x;
 
 int songLenInSeconds;
 
@@ -86,6 +89,12 @@ void updateTime(QWORD current, int songLengthS, sf::Text& text) {
 
 void updateVolume(HSTREAM channel) {
 	resizeVolumeBar = sf::Mouse::getPosition(window).x - volumeBar.getPosition().x;
+	if (resizeVolumeBar <= 0) {
+		resizeVolumeBar = 0;
+	}
+	else if (resizeVolumeBar >= 150) {
+		resizeVolumeBar = 150;
+	}
 	volume = resizeVolumeBar / 150;
 	BASS_ChannelSetAttribute(channel, BASS_ATTRIB_VOL, volume);
 	volumeSlider.setSize(sf::Vector2f(resizeVolumeBar, 20));
@@ -184,6 +193,16 @@ int b = 0;
 
 DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 {
+	//BOTAR UM IF AQUI? (DAR STD OUT OI PRA VER SE PRECISA)
+
+	//though I only update the bar each second (to not overload the processor with too many calls) I always use bytes for precision
+	currentPosition = BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE);
+	//UPDATE BAR
+	x = 250 * currentPosition / BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE);
+	progressBar.setSize(sf::Vector2f(x, 20));
+
+	updateTime(currentPosition, songLenInSeconds, songTime);
+
 	if (BASS_ChannelIsActive(activeChannel)) { // stream1 has data //VOLTAR PRA STR1, EM STR2 DECLARAR 1
 		r = BASS_ChannelGetData(activeChannel, buf, len);
 	}
@@ -258,18 +277,6 @@ void backTrack() {
 		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
 	}
 	else {
-		/*if (b > 0) { //b + 1 exists
-			if (b == 1) {
-				BASS_ChannelSetPosition(activeChannel, 0, BASS_POS_BYTE);
-				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
-			}
-		}
-		else if(!b && (sizeof(songs) / sizeof(*songs)) == 1) { //first song
-
-		}
-		else { //b = NULL and it doesn't have only one song (last song)
-
-		}*/
 
 		if (b == 1 || sizeOfSongs == 1) { //if first song or only one song
 			BASS_StreamFree(str1);
@@ -434,6 +441,12 @@ int main()
 
 						//updateTracking(s);
 
+						draggingTrackbar = TRUE;
+
+						if (BASS_ChannelIsActive(strout) == BASS_ACTIVE_PLAYING) {
+							BASS_ChannelPause(strout);
+						}
+
 						resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
 						k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
 						BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
@@ -443,11 +456,44 @@ int main()
 						updateTracking(activeChannel);
 					}
 
+
 					//same thing, but for volume (change that later with slider functions)
 					if (volumeBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
-						//updateVolume(s);
-						//updateVolume(strout);
+						draggingVolume = TRUE;
+						updateVolume(strout);
 					}
+				}
+				break; 
+
+			case sf::Event::MouseMoved:
+				if (draggingTrackbar) {
+					resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
+					if (resizeBar <= 0) {
+						resizeBar = 0;
+					}
+					else if (resizeBar >= 250) {
+						resizeBar = 250;
+					}	
+					k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
+					BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
+					progressBar.setSize(sf::Vector2f(resizeBar, 20));
+					updateTracking(activeChannel);
+				}
+				else if (draggingVolume) {
+					updateVolume(strout);
+				}
+				break;
+
+			case  sf::Event::MouseButtonReleased:
+				if (event.mouseButton.button == sf::Mouse::Left && draggingTrackbar == TRUE) {
+					draggingTrackbar = FALSE;
+					if (isPlaying) {
+						BASS_ChannelPlay(strout, FALSE);
+					}
+					BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //resets the buffer - it lags anyway, but this is not buggy/it's more elegant/manageable
+				}
+				else if (event.mouseButton.button == sf::Mouse::Left && draggingVolume == TRUE) {
+					draggingVolume = FALSE;
 				}
 				break;
 
@@ -489,64 +535,6 @@ int main()
 		window.draw(backButton);
 
 		window.display();
-
-		float x;
-		if (timer.getElapsedTime() >= sf::seconds(1.0f)) {
-			//though I only update the bar each second (to not overload the processor with too many calls) I always use bytes for precision
-			//currentPosition = BASS_ChannelGetPosition(s, BASS_POS_BYTE);
-			currentPosition = BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE);
-			//UPDATE BAR
-			//x = 250 * currentPosition / BASS_ChannelGetLength(s, BASS_POS_BYTE);
-			x = 250 * currentPosition / BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE);
-			progressBar.setSize(sf::Vector2f(x, 20));
-
-			//UPDATE TIME (0:00)
-			updateTime(currentPosition, songLenInSeconds, songTime);
-
-			timer.restart();
-		}
-
-		/*if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
-			std::cout << holding;
-			if (trackBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
-				holding = TRUE;
-			}
-
-			if (holding == TRUE) {
-				resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
-				std::cout << resizeBar;
-				std::cout << "\n";
-				if (resizeBar <= 0) {
-					resizeBar = 0;
-				}
-				else if (resizeBar >= 250) {
-					resizeBar = 250;
-				}
-
-				k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
-				BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
-				progressBar.setSize(sf::Vector2f(resizeBar, 20));
-				currentPosition = BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE);
-				updateTime(currentPosition, getChannelLengthInSeconds(activeChannel), songTime);
-				BASS_ChannelPause(strout);
-				updateTracking(activeChannel);
-				timer.restart();
-			}
-		}
-		else {
-			if (holding && isPlaying && BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE) != BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE)) { //TODO
-				holding = FALSE;
-				//BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //resets the buffer - it lags anyway, but this is not buggy/it's more elegant/manageable // change this one's position?
-				BASS_ChannelPlay(strout, FALSE);
-			} //BUGADA DE NOVOOOOOOOOOO
-		}*/
-
-		if (volumeBar.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
-			if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
-				//updateVolume(s);
-				updateVolume(strout);
-			}
-		}
 	}
 
 	return 0;
