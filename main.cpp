@@ -39,8 +39,9 @@ BASS_CHANNELINFO info2;
 bool isPlaying = FALSE;
 bool draggingTrackbar = FALSE;
 bool draggingVolume = FALSE;
-const char* filePath = "01 - Rising.mp3";
-sf::Clock timer;
+
+//const char* filePath = "01 - Rising.mp3";
+//sf::Clock timer;
 
 float resizeBar;
 float resizeVolumeBar;
@@ -54,7 +55,7 @@ int songLenInSeconds;
 QWORD currentPosition;
 std::string currentSongTime;
 
-sf::RenderWindow window(sf::VideoMode(840, 480), "Songbird");
+sf::RenderWindow window(sf::VideoMode(1355, 715), "Songbird");
 
 sf::RectangleShape volumeBar(sf::Vector2f(150, 20));
 sf::RectangleShape volumeSlider(sf::Vector2f(150, 20));
@@ -82,9 +83,9 @@ std::string toHourFormat(int seconds) {
 	return formatedTime;
 }
 
-void updateTime(QWORD current, int songLengthS, sf::Text& text) {
-	std::string ctime = toHourFormat(BASS_ChannelBytes2Seconds(s, current));
-	text.setString(ctime + "/" + toHourFormat(songLengthS)); //TODO CHANGE THIS
+void updateTime(QWORD current, int songLengthS, sf::Text& text, HSTREAM channel) {
+	std::string ctime = toHourFormat(BASS_ChannelBytes2Seconds(channel, current));
+	text.setString(ctime + "/" + toHourFormat(songLengthS)); //TODO CHANGE THIS - since hourformat(songlengths) is constant
 }
 
 void updateVolume(HSTREAM channel) {
@@ -106,32 +107,33 @@ int getChannelLengthInSeconds(HSTREAM channel) {
 
 void updateTracking(HSTREAM channel) {
 	currentPosition = BASS_ChannelGetPosition(channel, BASS_POS_BYTE);
-	updateTime(currentPosition, getChannelLengthInSeconds(channel), songTime);
-	timer.restart();
+	updateTime(currentPosition, getChannelLengthInSeconds(channel), songTime, channel);
 }
 
-void playback(int c, HSTREAM channel) {
-	updateTracking(channel);
-
-	if (c == 0) {
-		isPlaying = TRUE;
+void playback(int c) {
+	isPlaying = c;
+	if (isPlaying) {
+		BASS_ChannelPlay(strout, FALSE);
 		text.setString("Playing");
-		//BASS_ChannelPlay(s, FALSE);
-		BASS_ChannelPlay(activeChannel, FALSE);
 	}
 	else {
-		isPlaying = FALSE; //substituir por C? 0 = true, 1 = false
+		BASS_ChannelPause(strout);
 		text.setString("Paused");
-		//BASS_ChannelPause(s);
-		BASS_ChannelPause(activeChannel);
 	}
 }
 
 void resizePlaybackBar() {
 	resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
+	if (resizeBar <= 0) {
+		resizeBar = 0;
+	}
+	else if (resizeBar >= 250) {
+		resizeBar = 250;
+	}
 	k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
 	BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
 	progressBar.setSize(sf::Vector2f(resizeBar, 20));
+	updateTracking(activeChannel);
 }
 
 void setInfo(TagLib::FileRef file) {
@@ -156,7 +158,7 @@ void setActiveChannel(HSTREAM channel, const char* filename) {
 
 DWORD r;
 
-/*const char* songs[] = {
+const char* songs[] = {
 	"01. Deus Le Volt!.flac",
 	"02. Spread Your Fire.flac",
 	"03. Angels And Demons.flac",
@@ -170,9 +172,9 @@ DWORD r;
 	"11. Morning Star.flac",
 	"12. Late Redemption.flac",
 	"13. Gate XIII.flac"
-};*/
+};
 
-const char* songs[] = {
+/*/const char* songs[] = {
 	"01. Act I_ Scene One_ Regression.flac",
 	"02. Act I_ Scene Two_ I. Overture 1928.flac",
 	"03. Act I_ Scene Two_ II. Strange Déjà Vu.flac",
@@ -185,7 +187,7 @@ const char* songs[] = {
 	"10. Act II_ Scene Seven_ II. One Last Time.flac",
 	"11. Act II_ Scene Eight_ The Spirit Carries On.flac",
 	"12. Act II_ Scene Nine_ Finally Free.flac"
-};
+};*/
 
 int sizeOfSongs = sizeof(songs) / sizeof(*songs); //obivmante mudar isso quando os queues forem alteráveis
 
@@ -201,7 +203,7 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 	x = 250 * currentPosition / BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE);
 	progressBar.setSize(sf::Vector2f(x, 20));
 
-	updateTime(currentPosition, songLenInSeconds, songTime);
+	updateTime(currentPosition, songLenInSeconds, songTime, activeChannel);
 
 	if (BASS_ChannelIsActive(activeChannel)) { // stream1 has data //VOLTAR PRA STR1, EM STR2 DECLARAR 1
 		r = BASS_ChannelGetData(activeChannel, buf, len);
@@ -238,10 +240,13 @@ DWORD CALLBACK MyStreamProc(HSTREAM handle, void* buf, DWORD len, void* user)
 	return r;
 }
 
+//HSTREAM currentChannel;
 void jumpTrack() {
 	if (b) {
 		if (activeChannel == str1) {
+			//currentChannel = str2;
 			BASS_ChannelGetInfo(str2, &info2);
+			//setActiveChannel(currentChannel, info2.filename);
 			setActiveChannel(str2, info2.filename);
 			BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //maybe setting this later "bites" the beggining of the song? idk, it sounds smooth. maybe this will have to be a down.
 			if (songs[b + 1]) {
@@ -272,17 +277,13 @@ void jumpTrack() {
 }
 
 void backTrack() {
-	if (BASS_ChannelBytes2Seconds(activeChannel, BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE)) > 20) {
+	std::cout << b;
+	if (BASS_ChannelBytes2Seconds(activeChannel, BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE)) > 20 || b == 1 || sizeOfSongs == 1) {
 		BASS_ChannelSetPosition(activeChannel,0,BASS_POS_BYTE);
 		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
 	}
 	else {
-
-		if (b == 1 || sizeOfSongs == 1) { //if first song or only one song
-			BASS_StreamFree(str1);
-			BASS_StreamFree(str2);
-		}
-		else {
+		if (b) { //unecessary stretch? TODO - REDO LOGIC WITH B
 			if (activeChannel == str1) {
 				b = b - 2;
 				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
@@ -304,7 +305,23 @@ void backTrack() {
 				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
 			}
 		}
+		else {
+			if (sizeOfSongs > 1) {
+				b = sizeOfSongs - 2;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str1, &info2);
+				setActiveChannel(str1, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b], 0, 0, BASS_STREAM_DECODE);
+			}
+		}
 	}
+}
+
+void updateControls() {
+
 }
 
 int main()
@@ -379,11 +396,6 @@ int main()
 
 	//initializing player
 	BASS_Init(-1, 44100, 0, 0, NULL);
-	s = BASS_StreamCreateFile(FALSE, filePath, 0, 0, BASS_STREAM_AUTOFREE); //change the string for whatever filename
-	TagLib::FileRef f(filePath);
-	setInfo(f);
-
-	getCover(f, testTexture);
 
 	coverArt.setPosition(10.f, 130.f);
 
@@ -413,19 +425,11 @@ int main()
 			case sf::Event::MouseButtonPressed:
 				if (event.mouseButton.button == sf::Mouse::Left) {
 					if (playButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y) && isPlaying == FALSE) {
-						//playback(0, s);
-						//playback(0, strout);
-						isPlaying = TRUE;
-						BASS_ChannelPlay(strout, FALSE);
-						text.setString("Playing");
+						playback(1);
 					}
 
 					if (pauseButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y) && isPlaying == TRUE) {
-						//playback(1, s);
-						//playback(1, strout);
-						isPlaying = FALSE;
-						BASS_ChannelPause(strout);
-						text.setString("Paused");
+						playback(0);
 					}
 
 					if (skipButton.getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y)) {
@@ -447,13 +451,9 @@ int main()
 							BASS_ChannelPause(strout);
 						}
 
-						resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
-						k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
-						BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
-						BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //resets the buffer - it lags anyway, but this is not buggy/it's more elegant/manageable
-						progressBar.setSize(sf::Vector2f(resizeBar, 20));
+						resizePlaybackBar();
 
-						updateTracking(activeChannel);
+						BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //resets the buffer - it lags anyway, but this is not buggy/it's more elegant/manageable
 					}
 
 
@@ -467,17 +467,7 @@ int main()
 
 			case sf::Event::MouseMoved:
 				if (draggingTrackbar) {
-					resizeBar = sf::Mouse::getPosition(window).x - trackBar.getPosition().x;
-					if (resizeBar <= 0) {
-						resizeBar = 0;
-					}
-					else if (resizeBar >= 250) {
-						resizeBar = 250;
-					}	
-					k = BASS_ChannelGetLength(activeChannel, BASS_POS_BYTE) * resizeBar / 250;
-					BASS_ChannelSetPosition(activeChannel, k, BASS_POS_BYTE);
-					progressBar.setSize(sf::Vector2f(resizeBar, 20));
-					updateTracking(activeChannel);
+					resizePlaybackBar();
 				}
 				else if (draggingVolume) {
 					updateVolume(strout);
