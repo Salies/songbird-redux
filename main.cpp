@@ -7,11 +7,17 @@ namespace fs = std::filesystem;
 #include <fmt/format.h>
 #include "bass.h"
 
-HSTREAM activeChannel, primary, secondary, out;
+//HSTREAM activeChannel, primary, secondary, out;
+
+HSTREAM activeChannel, str1, str2, strout;
+
+BASS_CHANNELINFO info, info2;
+
+DWORD r;
 
 bool isPlaying = FALSE, dragging[2] = { FALSE, FALSE }, inSearchBar = FALSE;
 
-int songLengthInSeconds, sizeOfSongs;
+int songLengthInSeconds, sizeOfSongs, b;
 
 size_t searchSize;
 
@@ -25,15 +31,13 @@ sf::RectangleShape cover(sf::Vector2f(200, 200)), rects[5], border[2], controls[
 
 sf::Text searchText, songTime, trackInfo[4];
 
-sf::String searchInput;
-
 sf::Font fonts[2];
 
 sf::Texture coverArt, controlTileset;
 
 std::vector <std::string> songs;
 
-sf::String supportedFiles[7] = { "wav", "aiff", "mp3", "mp2", "mp1", "ogg", "flac"};
+sf::String supportedFiles[7] = { "wav", "aiff", "mp3", "mp2", "mp1", "ogg", "flac"}, searchInput;
 
 struct rV{ //WORKS!
 	float sizeX;
@@ -58,10 +62,6 @@ rV borderValues[2] = {
 	{200, 200, 22, 22, 26, 26, 26}
 };
 
-/*void setupRect(sf::RectangleShape rect) {
-
-}*/
-
 void leaveSearchBar() {
 	inSearchBar = FALSE;
 	rects[0].setFillColor(sf::Color(50, 50, 50));
@@ -77,17 +77,76 @@ int checkSupported(fs::path extension) {
 	return 0;
 }
 
+void setActiveChannel(HSTREAM channel, const char* filename) {
+	activeChannel = channel;
+	BASS_ChannelGetInfo(channel, &info);
+	/*TagLib::FileRef file(filename);
+	setInfo(file);
+	getCover(file, testTexture);
+	coverArt.setTexture(&testTexture);*/
+}
+
+DWORD CALLBACK StreamProc(HSTREAM handle, void* buf, DWORD len, void* user) //shoutouts to Ian @ un4seen for this awesome post back in 2003 https://www.un4seen.com/forum/?topic=2050.msg13435#msg13435 - I adapated the functin to be loopable
+{
+	//AQUI HAVIA O ATUALIZADOR DE TEMPO/BARRA
+
+	if (BASS_ChannelIsActive(activeChannel)) {
+		r = BASS_ChannelGetData(activeChannel, buf, len);
+	}
+	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str2)) {
+		BASS_ChannelGetInfo(str2, &info2);
+		if (songs[b + 1].c_str() && !BASS_ChannelIsActive(str1)) {
+			b = b + 1;
+			str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+		}
+		else if (!songs[b + 1].c_str()) {
+			b = NULL;
+		}
+		setActiveChannel(str2, info2.filename);
+		r = BASS_ChannelGetData(str2, buf, len);
+	}
+	else if (!BASS_ChannelIsActive(activeChannel) && BASS_ChannelIsActive(str1)) {
+		BASS_ChannelGetInfo(str1, &info2);
+		if (songs[b + 1].c_str() && !BASS_ChannelIsActive(str2)) {
+			b = b + 1;
+			str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+		}
+		else if (!songs[b + 1].c_str()) {
+			b = NULL;
+		}
+		setActiveChannel(str1, info2.filename);
+		r = BASS_ChannelGetData(str1, buf, len);
+	}
+	else {
+		r = BASS_STREAMPROC_END;
+		BASS_StreamFree(str1);
+		BASS_StreamFree(str2);
+	}
+	return r;
+}
+
+void initializeBass(int mutipleSongs) {
+	b = 0;
+	str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+	BASS_ChannelGetInfo(str1, &info);
+	setActiveChannel(str1, songs[b].c_str());
+	if (mutipleSongs) {
+		b = b + 1;
+		str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+	}
+	strout = BASS_StreamCreate(info.freq, info.chans, 0, StreamProc, 0); // create the output stream
+	BASS_ChannelPlay(strout, FALSE);
+}
+
 int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
 	if (fs::is_regular_file(pathStatus)) { //is a single file
-		if (!songs.empty()) { //reset array
-			songs.clear();
-		};
-
 		if (checkSupported(path.extension())) {
+			songs.clear();
 			songs.push_back(dir);
-			//INITIALIZE BASS
+			initializeBass(0);
+			return 1;
 		}
-		return 1;
+		return 0;
 	}
 	else if (fs::is_directory(pathStatus)) {
 		if (!songs.empty()) { //reset array
@@ -95,10 +154,24 @@ int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
 		};
 
 		for (const auto& entry : fs::directory_iterator(path)) {
-			if (checkSupported(entry.path().extension())) {
-				std::cout << entry.path().string() << std::endl;
+			if (checkSupported(entry.path().extension())) { //MAYBE TODO - INSTEAD OF PUSHING TO SONGS, PUSH TO TEMP ARRAY AND THEN IF TEMP IS NOT EMPTY PUSH TO SONGS (THIS WAY SONGS IS NOT CLEARED UNNECESSARILY)
+				songs.push_back(entry.path().string());
 			}
 		}
+
+		if (songs.empty()) {
+			return 0;
+		}
+
+		//INITIALIZE BASS
+
+		if (songs.size() > 1) {
+			initializeBass(1);
+		}
+		else {
+			initializeBass(0);
+		}
+
 		return 1;
 	}
 	else {
@@ -109,6 +182,8 @@ int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
 
 int main() {
 	/* ===== BASS INIT ===== */
+	BASS_PluginLoad("bassflac.dll", 0);
+
 	BASS_Init(-1, 44100, 0, 0, NULL);
 
 	/* ===== FRONT END - LOADING STUFF ===== */
@@ -272,5 +347,9 @@ int main() {
 }
 
 /*
-TODO - ERROR PARSING => IF NOT ALL THE FILES FROM THE FOLDER ARE FROM THE SAME FORMAT
+TODO - ERROR PARSING => IF NOT ALL THE FILES FROM THE FOLDER ARE FROM THE SAME FORMAT ===> DONE!
+TODO - ERROR PARSING => BASS CALLS AND MORE ERROR CHECKS IN GENERAL
+TODO - BASS => GET SYSTEM FREQUENCY INSTEAD OF SETTING IT TO 44100 BY DEFAULT
+TODO - FUCNTIONS => REWRITE THE STREAM PROCESSING FUNCTION (SteamProc) -> MORE FUNCTIONS!!!
+TODO - CLASSES => CREATE A CLASS FOR THE PLAYER (PLAYBACK, PAUSE, SKIP, ETC.) FUNCTIONS
 */
