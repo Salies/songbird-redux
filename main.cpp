@@ -1,4 +1,7 @@
 #include <iostream>
+#include <filesystem>
+#include <clocale>
+namespace fs = std::filesystem;
 
 #include <SFML/Graphics.hpp>
 #include <fmt/format.h>
@@ -8,7 +11,7 @@ HSTREAM activeChannel, primary, secondary, out;
 
 bool isPlaying = FALSE, dragging[2] = { FALSE, FALSE }, inSearchBar = FALSE;
 
-int songLengthInSeconds;
+int songLengthInSeconds, sizeOfSongs;
 
 size_t searchSize;
 
@@ -27,6 +30,10 @@ sf::String searchInput;
 sf::Font fonts[2];
 
 sf::Texture coverArt, controlTileset;
+
+std::vector <std::string> songs;
+
+sf::String supportedFiles[7] = { "wav", "aiff", "mp3", "mp2", "mp1", "ogg", "flac"};
 
 struct rV{ //WORKS!
 	float sizeX;
@@ -55,7 +62,55 @@ rV borderValues[2] = {
 
 }*/
 
+void leaveSearchBar() {
+	inSearchBar = FALSE;
+	rects[0].setFillColor(sf::Color(50, 50, 50));
+	searchText.setFillColor(sf::Color::White);
+}
+
+int checkSupported(fs::path extension) {
+	for (unsigned int i = 0; i < 7; ++i) {
+		if ("." + supportedFiles[i] == extension.string()) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
+	if (fs::is_regular_file(pathStatus)) { //is a single file
+		if (!songs.empty()) { //reset array
+			songs.clear();
+		};
+
+		if (checkSupported(path.extension())) {
+			songs.push_back(dir);
+			//INITIALIZE BASS
+		}
+		return 1;
+	}
+	else if (fs::is_directory(pathStatus)) {
+		if (!songs.empty()) { //reset array
+			songs.clear();
+		};
+
+		for (const auto& entry : fs::directory_iterator(path)) {
+			if (checkSupported(entry.path().extension())) {
+				std::cout << entry.path().string() << std::endl;
+			}
+		}
+		return 1;
+	}
+	else {
+		std::cout << "é porra nenhuma!";
+		return 0;
+	}
+}
+
 int main() {
+	/* ===== BASS INIT ===== */
+	BASS_Init(-1, 44100, 0, 0, NULL);
+
 	/* ===== FRONT END - LOADING STUFF ===== */
 	controlTileset.loadFromFile("assets/controls.png");
 	fonts[0].loadFromFile("assets/fonts/OpenSans-Regular.ttf");
@@ -136,9 +191,7 @@ int main() {
 					}
 					else {
 						if (inSearchBar) {
-							inSearchBar = FALSE;
-							rects[0].setFillColor(sf::Color(50, 50, 50));
-							searchText.setFillColor(sf::Color::White);
+							leaveSearchBar();
 						}
 					}
 				}
@@ -156,12 +209,14 @@ int main() {
 						}
 					}
 					else {
-						searchInput += static_cast<char>(event.text.unicode);
-						if (searchSize <= 27) {
-							searchText.setString(searchInput);
-						}
-						else {
-							searchText.setString(searchInput.substring(0, 25) + "...");
+						if (event.text.unicode != 22) { //prevent weird chat in ctrl + v
+							searchInput += static_cast<char>(event.text.unicode);
+							if (searchSize <= 27) {
+								searchText.setString(searchInput);
+							}
+							else {
+								searchText.setString(searchInput.substring(0, 25) + "...");
+							}
 						}
 					}
 				}
@@ -176,6 +231,13 @@ int main() {
 					else {
 						searchText.setString(searchInput.substring(0, 25) + "...");
 					}
+				}
+				else if (event.key.code == sf::Keyboard::Enter && inSearchBar) {
+					fs::path pa(searchInput);
+					parsePath(searchInput, pa, fs::status(pa));
+					searchInput = "";
+					searchText.setString(searchInput);
+					leaveSearchBar();
 				}
 				break;
 
@@ -206,5 +268,9 @@ int main() {
 		window.display();
 	}
 
-	return 0;
+	return 1;
 }
+
+/*
+TODO - ERROR PARSING => IF NOT ALL THE FILES FROM THE FOLDER ARE FROM THE SAME FORMAT
+*/
