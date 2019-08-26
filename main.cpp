@@ -1,11 +1,16 @@
 #include <iostream>
 #include <filesystem>
-#include <clocale>
 namespace fs = std::filesystem;
 
 #include <SFML/Graphics.hpp>
 #include <fmt/format.h>
 #include "bass.h"
+
+#include "covers.h"
+
+#include <taglib/fileref.h>
+#include <taglib/tag.h>
+#include <taglib/taglib.h>
 
 //HSTREAM activeChannel, primary, secondary, out;
 
@@ -17,7 +22,7 @@ DWORD r;
 
 bool isPlaying = FALSE, dragging[2] = { FALSE, FALSE }, inSearchBar = FALSE;
 
-int songLengthInSeconds, sizeOfSongs, b;
+int songLengthInSeconds, b;
 
 size_t searchSize;
 
@@ -53,13 +58,20 @@ rV rectValues[5] = {
 	{200, 15, 233, 177, 50, 50, 50}, //search bar --- 1 + 20 + 1 + 200 + 1 + 10 (horizontal) / 178 vertical
 	{200, 15, 309, 207, 50, 50, 50}, //trackbar (background) --- 1 + 20 + 1 + 200 + 1 + 10 + 11 + 15 + 14 + 15 + 11 + 10 / 208 - 1 cause yes (vertical)
 	{0, 15, 309, 207, 185, 185, 185}, //trackbar (itself)
-	{54, 15, 579, 207, 50, 50, 50}, //volume bar (background)
-	{0, 15, 579, 207, 185, 185, 185} //volume bar (itself)
+	{44, 15, 589, 207, 50, 50, 50}, //volume bar (background)
+	{0, 15, 589, 207, 185, 185, 185} //volume bar (itself)
 };
 
 rV borderValues[2] = {
 	{652, 242, 1, 1, 30, 30, 30},
 	{200, 200, 22, 22, 26, 26, 26}
+};
+
+rV textValues[4] = { //font (0 = REGULAR, 1 = BOLD), fontsize, posX, posY, color, color, color - TODO - REDO THIS (not necessary, too many repeated values)
+	{1, 15, 232, 22, 240, 240, 240},
+	{0, 12, 232, 41, 215, 215, 215},
+	{0, 12, 232, 74, 215, 215, 215},
+	{0, 12, 232, 89, 215, 215, 215}
 };
 
 void leaveSearchBar() {
@@ -77,13 +89,44 @@ int checkSupported(fs::path extension) {
 	return 0;
 }
 
+void playback(int c) {
+	isPlaying = c;
+	if (isPlaying) {
+		BASS_ChannelPlay(strout, FALSE);
+		controls[0].setTextureRect(sf::IntRect(19, 0, 14, 13));
+	}
+	else {
+		BASS_ChannelPause(strout);
+		controls[0].setTextureRect(sf::IntRect(0, 0, 14, 13));
+	}
+}
+
+void clearStream() {
+	BASS_StreamFree(strout);
+	BASS_StreamFree(str1);
+	BASS_StreamFree(str2);
+	playback(0);
+}
+
+void setInfo(TagLib::FileRef file) {
+	trackInfo[0].setString(file.tag()->title().toWString()); //TODO - IF NAME TOO BIG // I GUESS THIS WORKS ON GNU/LINUX BECAUSE IT'S DEFINED BY TAGLIB -- NEEDS CONFIRMATION
+	trackInfo[1].setString(file.tag()->artist().toWString());
+	trackInfo[2].setString(file.tag()->album().toWString());
+	if (file.tag()->genre() != TagLib::String::null) {
+		trackInfo[3].setString(std::to_string(file.tag()->year()) + " / " + file.tag()->genre().toCString());
+	}
+	else {
+		trackInfo[3].setString(std::to_string(file.tag()->year()));
+	}
+}
+
 void setActiveChannel(HSTREAM channel, const char* filename) {
 	activeChannel = channel;
 	BASS_ChannelGetInfo(channel, &info);
-	/*TagLib::FileRef file(filename);
+	TagLib::FileRef file(filename);
 	setInfo(file);
-	getCover(file, testTexture);
-	coverArt.setTexture(&testTexture);*/
+	getCover(file, coverArt);
+	cover.setTexture(&coverArt, true);
 }
 
 DWORD CALLBACK StreamProc(HSTREAM handle, void* buf, DWORD len, void* user) //shoutouts to Ian @ un4seen for this awesome post back in 2003 https://www.un4seen.com/forum/?topic=2050.msg13435#msg13435 - I adapated the functin to be loopable
@@ -119,13 +162,13 @@ DWORD CALLBACK StreamProc(HSTREAM handle, void* buf, DWORD len, void* user) //sh
 	}
 	else {
 		r = BASS_STREAMPROC_END;
-		BASS_StreamFree(str1);
-		BASS_StreamFree(str2);
+		clearStream();
 	}
 	return r;
 }
 
 void initializeBass(int mutipleSongs) {
+	clearStream();
 	b = 0;
 	str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
 	BASS_ChannelGetInfo(str1, &info);
@@ -135,7 +178,83 @@ void initializeBass(int mutipleSongs) {
 		str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
 	}
 	strout = BASS_StreamCreate(info.freq, info.chans, 0, StreamProc, 0); // create the output stream
-	BASS_ChannelPlay(strout, FALSE);
+	playback(1);
+}
+
+void jumpTrack() {
+	if (b) {
+		if (activeChannel == str1) {
+			BASS_ChannelGetInfo(str2, &info2);
+			setActiveChannel(str2, info2.filename);
+			BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE); //maybe setting this later "bites" the beggining of the song? idk, it sounds smooth. maybe this will have to be a down.
+			if (b != songs.size() - 1) {
+				b = b + 1;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+			}
+			else {
+				b = NULL;
+			}
+		}
+		else if (activeChannel == str2) {
+			BASS_ChannelGetInfo(str1, &info2);
+			setActiveChannel(str1, info2.filename);
+			BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+			if (b != songs.size() - 1) {
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+			}
+			else {
+				b = NULL;
+			}
+		}
+	}
+	else {
+		clearStream();
+	}
+}
+
+void backTrack() {
+	std::cout << b;
+	if (BASS_ChannelBytes2Seconds(activeChannel, BASS_ChannelGetPosition(activeChannel, BASS_POS_BYTE)) > 20 || b == 1 || songs.size() == 1) {
+		BASS_ChannelSetPosition(activeChannel, 0, BASS_POS_BYTE);
+		BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+	}
+	else {
+		if (b) { //unecessary stretch? TODO - REDO LOGIC WITH B
+			if (activeChannel == str1) {
+				b = b - 2;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str2, &info2);
+				setActiveChannel(str2, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+			}
+			else if (activeChannel == str2) {
+				b = b - 2;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str1, &info2);
+				setActiveChannel(str1, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+			}
+		}
+		else {
+			if (songs.size() > 1) {
+				b = songs.size() - 2;
+				str1 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+				BASS_ChannelGetInfo(str1, &info2);
+				setActiveChannel(str1, info2.filename);
+				BASS_ChannelSetPosition(strout, 0, BASS_POS_BYTE);
+				//sempre vai acontecer,acho
+				b = b + 1;
+				str2 = BASS_StreamCreateFile(FALSE, songs[b].c_str(), 0, 0, BASS_STREAM_DECODE);
+			}
+		}
+	}
 }
 
 int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
@@ -163,8 +282,6 @@ int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
 			return 0;
 		}
 
-		//INITIALIZE BASS
-
 		if (songs.size() > 1) {
 			initializeBass(1);
 		}
@@ -175,7 +292,6 @@ int parsePath(sf::String dir, fs::path path, fs::file_status pathStatus) {
 		return 1;
 	}
 	else {
-		std::cout << "é porra nenhuma!";
 		return 0;
 	}
 }
@@ -192,11 +308,11 @@ int main() {
 	fonts[1].loadFromFile("assets/fonts/OpenSans-Bold.ttf");
 
 	/* ===== FRONT END - SETTING UP RECTS =====*/
-	cover.setFillColor(sf::Color::Black);
+	//cover.setFillColor(sf::Color::Black);
 	cover.setPosition(22, 22);
 
 	for (unsigned int i = 0u; i < 3; ++i) {
-		controls[i].setTexture(&controlTileset);
+		controls[i].setTexture(&controlTileset, 1);
 	}
 
 	controls[0].setSize(sf::Vector2f(14, 13));
@@ -219,7 +335,7 @@ int main() {
 		rects[i].setFillColor(sf::Color(rectValues[i].red, rectValues[i].green, rectValues[i].blue));
 	}
 
-	for (unsigned int i = 0u; i < 2; ++i) { //TODO - tirar sizeof (os valores são definidos)
+	for (unsigned int i = 0u; i < 2; ++i) {
 		border[i].setSize(sf::Vector2f(borderValues[i].sizeX, borderValues[i].sizeY));
 		border[i].setPosition(borderValues[i].posX, borderValues[i].posY);
 		border[i].setFillColor(sf::Color::Transparent);
@@ -227,13 +343,24 @@ int main() {
 		border[i].setOutlineThickness(1);
 	}
 
+	for (unsigned int i = 0u; i < 4; ++i) {
+		trackInfo[i].setFont(fonts[(int)textValues[i].sizeX]);
+		trackInfo[i].setCharacterSize(textValues[i].sizeY);
+		trackInfo[i].setPosition(232, textValues[i].posY);
+		trackInfo[i].setFillColor(sf::Color(textValues[i].red, textValues[i].green, textValues[i].blue));
+	}
+
 	/* ===== FRONT END - SETTING UP TEXT =====*/
 	searchText.setFont(fonts[0]);
 	searchText.setFillColor(sf::Color::White);
 	searchText.setCharacterSize(11);
-	//searchText.setString("bola");
 	searchText.setPosition(235, 178);
 
+	songTime.setString("0:00 / 0:00");
+	songTime.setFont(fonts[0]);
+	songTime.setFillColor(sf::Color(50, 50, 50));
+	songTime.setCharacterSize(12);
+	songTime.setPosition(514, 207);
 
 	while (window.isOpen())
 	{
@@ -244,13 +371,18 @@ int main() {
 				if (event.mouseButton.button == sf::Mouse::Left) {
 					mousePos = sf::Mouse::getPosition(window);
 					if(controls[0].getGlobalBounds().contains(mousePos.x, mousePos.y)) { //is there a better way to do this other than this ridiculous if? if so, please push a commit!
-						std::cout << "play";
+						if (isPlaying) {
+							playback(0);
+						}
+						else {
+							playback(1);
+						}
 					}
 					else if (controls[1].getGlobalBounds().contains(mousePos.x, mousePos.y)) {
-						std::cout << "back";
+						backTrack();
 					}
 					else if (controls[2].getGlobalBounds().contains(mousePos.x, mousePos.y)) {
-						std::cout << "forward";
+						jumpTrack();
 					}
 					else if (rects[1].getGlobalBounds().contains(mousePos.x, mousePos.y)) {
 						std::cout << "trackbar";
@@ -309,7 +441,7 @@ int main() {
 				}
 				else if (event.key.code == sf::Keyboard::Enter && inSearchBar) {
 					fs::path pa(searchInput);
-					parsePath(searchInput, pa, fs::status(pa));
+					parsePath(searchInput, pa, fs::status(pa)); //TODO - ADD PARSER/ERROR DISPLAYER
 					searchInput = "";
 					searchText.setString(searchInput);
 					leaveSearchBar();
@@ -325,6 +457,7 @@ int main() {
 
 		window.draw(cover);
 
+		window.draw(songTime);
 
 		for (unsigned int i = 0u; i < 3; ++i) {
 			window.draw(controls[i]);
@@ -336,6 +469,10 @@ int main() {
 
 		for (unsigned int i = 0u; i < 5; ++i) {
 			window.draw(rects[i]);
+		}
+
+		for (unsigned int i = 0u; i < sizeof(textValues) / sizeof(*textValues); ++i) {
+			window.draw(trackInfo[i]);
 		}
 
 		window.draw(searchText);
@@ -351,5 +488,6 @@ TODO - ERROR PARSING => IF NOT ALL THE FILES FROM THE FOLDER ARE FROM THE SAME F
 TODO - ERROR PARSING => BASS CALLS AND MORE ERROR CHECKS IN GENERAL
 TODO - BASS => GET SYSTEM FREQUENCY INSTEAD OF SETTING IT TO 44100 BY DEFAULT
 TODO - FUCNTIONS => REWRITE THE STREAM PROCESSING FUNCTION (SteamProc) -> MORE FUNCTIONS!!!
-TODO - CLASSES => CREATE A CLASS FOR THE PLAYER (PLAYBACK, PAUSE, SKIP, ETC.) FUNCTIONS
+TODO - CLASSES => CREATE A CLASS FOR THE PLAYER (PLAYBACK, JUMPTRACK, BACKTRACK) FUNCTIONS
+TODO - ADD FADE IN/OUT (SKIP/FORWARD(?)/CLICK BAR)
 */
