@@ -95,8 +95,6 @@ bool ExtractMP4(TagLib::MP4::File* file, sf::Texture& target)
 	return false;
 }
 
-#include <iostream>
-
 bool getCover(const TagLib::FileRef& fr, sf::Texture& target) {
 	bool found = false;
 
