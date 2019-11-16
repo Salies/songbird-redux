@@ -95,6 +95,8 @@ bool ExtractMP4(TagLib::MP4::File* file, sf::Texture& target)
 	return false;
 }
 
+#include <iostream>
+
 bool getCover(const TagLib::FileRef& fr, sf::Texture& target) {
 	bool found = false;
 
@@ -138,6 +140,21 @@ bool getCover(const TagLib::FileRef& fr, sf::Texture& target) {
 		if (file->APETag())
 		{
 			found = ExtractAPE(file->APETag(), target);
+		}
+	}
+	else if(TagLib::RIFF::WAV::File * file = dynamic_cast<TagLib::RIFF::WAV::File*>(fr.file())){
+		//this kind of file has ID3v2 tags https://taglib.org/api/classTagLib_1_1RIFF_1_1WAV_1_1File.html#a2bca63e227b0c2fa6cdd0c181360de96
+		if (!found && file->ID3v2Tag())
+		{
+			found = ExtractID3(file->ID3v2Tag(), target);
+		}
+	}
+	else if (TagLib::RIFF::AIFF::File * file = dynamic_cast<TagLib::RIFF::AIFF::File*>(fr.file())) {
+		//this kind of file also has ID3v2 tags https://taglib.org/api/classTagLib_1_1RIFF_1_1AIFF_1_1File.html#add1a0d200c2356eb08c76057cdc54312
+		//does this work or needs verification? note that ->tag() returns a pointer regardless of it having real tags or not
+		if (!found && file->tag())
+		{
+			found = ExtractID3(file->tag(), target);
 		}
 	}
 

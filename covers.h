@@ -18,6 +18,8 @@
 #include <taglib/textidentificationframe.h>
 #include <taglib/tstring.h>
 #include <taglib/vorbisfile.h>
+#include <taglib/wavfile.h>
+#include <taglib/aifffile.h>
 
 /*class CCover
 {
